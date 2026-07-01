@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="72" viewBox="0 0 220 72" role="img" aria-label="CDC de Brest - Centre de Données Cliniques">
+  <rect x="1" y="1" width="218" height="70" rx="10" fill="#ffffff" stroke="#0a5ca8" stroke-width="2"/>
+  <!-- database / data icon -->
+  <g transform="translate(16,16)" fill="none" stroke="#0a5ca8" stroke-width="3">
+    <ellipse cx="20" cy="8" rx="16" ry="6" fill="#e6f0fa"/>
+    <path d="M4 8 v24 a16 6 0 0 0 32 0 V8" fill="#e6f0fa"/>
+    <path d="M4 20 a16 6 0 0 0 32 0"/>
+  </g>
+  <text x="70" y="30" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700" fill="#0a5ca8">CDC Brest</text>
+  <text x="70" y="48" font-family="Segoe UI, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#3b7dc4">Centre de Données Cliniques</text>
+</svg>

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="72" viewBox="0 0 200 72" role="img" aria-label="CHU de Brest">
+  <rect x="1" y="1" width="198" height="70" rx="10" fill="#ffffff" stroke="#0a5ca8" stroke-width="2"/>
+  <!-- medical cross -->
+  <g transform="translate(14,14)">
+    <rect x="16" y="4" width="12" height="36" rx="3" fill="#0a5ca8"/>
+    <rect x="4" y="16" width="36" height="12" rx="3" fill="#0a5ca8"/>
+  </g>
+  <text x="66" y="34" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="700" fill="#0a5ca8">CHU</text>
+  <text x="66" y="54" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="500" fill="#3b7dc4" letter-spacing="1">de BREST</text>
+</svg>
