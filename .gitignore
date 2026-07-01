@@ -3,3 +3,7 @@ __pycache__/
 .venv/
 venv/
 deprescriptions.csv
+deprescriptions_export.csv
+deprescriptions.db
+deprescriptions.db-wal
+deprescriptions.db-shm

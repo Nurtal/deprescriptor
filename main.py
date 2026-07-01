@@ -1,13 +1,17 @@
 """Deprescriptor — NiceGUI app to record medication deprescription decisions.
 
 Loads a list of patient identifiers (IEP) from a CSV via Polars, presents a form to
-capture stopped medications with justifications, and appends each decision to an
-output CSV together with the IEP and validation date.
+capture stopped medications with justifications, and stores each decision in a
+SQLite database (WAL mode → safe for concurrent writers) together with the IEP and
+validation date. The recorded data can be exported to CSV on demand.
 """
 
 from __future__ import annotations
 
 import csv
+import io
+import sqlite3
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -17,7 +21,8 @@ from nicegui import app, ui
 # --- Configuration ---------------------------------------------------------
 
 DATA_FILE = Path("test_data.csv")  # dev data source: single column 'IEP'
-OUTPUT_FILE = Path("deprescriptions.csv")
+DB_FILE = Path("deprescriptions.db")  # persistent store (SQLite, WAL mode)
+EXPORT_FILE = Path("deprescriptions_export.csv")  # default CSV export path
 ASSETS_DIR = Path("assets")
 
 # Medical blue/white palette.
@@ -80,17 +85,70 @@ def load_ieps() -> list[str]:
     return [str(v) for v in df["IEP"].to_list()]
 
 
-# --- Persistence -----------------------------------------------------------
+# --- Persistence (SQLite) --------------------------------------------------
+
+
+def _connect() -> sqlite3.Connection:
+    """Open a SQLite connection with a generous busy timeout.
+
+    The timeout lets concurrent writers wait for the lock instead of failing
+    immediately with "database is locked".
+    """
+    conn = sqlite3.connect(DB_FILE, timeout=30)
+    conn.execute("PRAGMA busy_timeout = 30000")
+    return conn
+
+
+def init_db() -> None:
+    """Create the table and enable WAL mode (idempotent)."""
+    with closing(_connect()) as conn:
+        # WAL allows many concurrent readers alongside a serialized writer and is
+        # a persistent property of the database file (set once).
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS deprescriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                iep TEXT NOT NULL,
+                validation_date TEXT NOT NULL,
+                prescription_text TEXT,
+                medication TEXT NOT NULL,
+                justifications TEXT,
+                details TEXT
+            )
+            """
+        )
 
 
 def append_rows(rows: list[dict]) -> None:
-    """Append decision rows to the output CSV, writing a header if new."""
-    write_header = not OUTPUT_FILE.exists()
-    with OUTPUT_FILE.open("a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS)
-        if write_header:
-            writer.writeheader()
-        writer.writerows(rows)
+    """Insert decision rows atomically. Safe for concurrent writers (WAL)."""
+    columns = ", ".join(OUTPUT_COLUMNS)
+    placeholders = ", ".join(f":{c}" for c in OUTPUT_COLUMNS)
+    with closing(_connect()) as conn, conn:  # inner `conn` = one transaction
+        conn.executemany(
+            f"INSERT INTO deprescriptions ({columns}) VALUES ({placeholders})",
+            rows,
+        )
+
+
+def export_csv_str() -> str:
+    """Return all recorded decisions as a CSV string (header + rows)."""
+    with closing(_connect()) as conn:
+        cursor = conn.execute(
+            f"SELECT {', '.join(OUTPUT_COLUMNS)} FROM deprescriptions ORDER BY id"
+        )
+        rows = cursor.fetchall()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(OUTPUT_COLUMNS)
+    writer.writerows(rows)
+    return buffer.getvalue()
+
+
+def export_csv(path: Path = EXPORT_FILE) -> Path:
+    """Write all recorded decisions to a CSV file and return its path."""
+    path.write_text(export_csv_str(), encoding="utf-8")
+    return path
 
 
 # --- UI: a single stopped-medication entry ---------------------------------
@@ -168,17 +226,17 @@ def index() -> None:
     with ui.header().classes("items-center justify-between px-4 py-2").style(
         f"background: linear-gradient(90deg, {BLUE} 0%, {BLUE_DARK} 100%)"
     ):
-        ui.image(_logo("chu_brest")).classes("h-12 w-auto").style(
-            "width:200px; background:white; border-radius:10px; padding:2px"
+        ui.image(_logo("chu_brest")).props("fit=contain").classes("h-20 w-40").style(
+            "background:white; border-radius:10px; padding:6px"
         )
         with ui.column().classes("items-center gap-0"):
             ui.label("Deprescriptor").classes("text-2xl font-bold text-white")
             ui.label("Aide à la déprescription médicamenteuse").classes(
                 "text-xs text-blue-100"
             )
-        ui.image(_logo("cdc_brest", "cdc")).classes("h-12 w-auto").style(
-            "width:220px; background:white; border-radius:10px; padding:2px"
-        )
+        ui.image(_logo("cdc_brest", "cdc")).props("fit=contain").classes(
+            "h-20 w-40"
+        ).style("background:white; border-radius:10px; padding:6px")
 
     with ui.card().classes("w-full max-w-3xl mx-auto mt-6 shadow-lg").style(
         f"border-top: 4px solid {BLUE}"
@@ -237,18 +295,24 @@ def index() -> None:
             "color=primary"
         )
 
+    with ui.row().classes("w-full max-w-3xl mx-auto mt-3 justify-end"):
+
+        def download_export() -> None:
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            ui.download(
+                export_csv_str().encode("utf-8"),
+                f"deprescriptions_{stamp}.csv",
+                media_type="text/csv",
+            )
+
+        ui.button(
+            "Exporter CSV", icon="download", on_click=download_export
+        ).props("outline color=primary")
+
     add_entry()  # start with one empty medication entry
 
-    # --- Easter egg: a discreet pic-vert nestled in the corner ---
-    # Nearly invisible until you hover over it (or find it by luck).
-    with ui.element("div").classes("fixed bottom-2 right-3").style(
-        "opacity:0.12; transition:opacity .4s, transform .4s; z-index:50"
-    ) as picvert:
-        ui.image(_logo("picvert")).classes("w-8 h-auto")
-        ui.tooltip("Cui cui ! 🌿 (Picus viridis)")
-    picvert.on("mouseenter", lambda: picvert.style("opacity:1; transform:scale(1.6)"))
-    picvert.on("mouseleave", lambda: picvert.style("opacity:0.12; transform:scale(1)"))
 
+init_db()
 
 if __name__ in {"__main__", "__mp_main__"}:
     ui.run(title="Deprescriptor")

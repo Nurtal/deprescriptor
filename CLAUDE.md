@@ -15,8 +15,13 @@ There is no test/lint tooling yet.
 
 Single-file app in `main.py`:
 - `load_ieps()` reads the `IEP` column from `DATA_FILE` (`test_data.csv`) via Polars.
-- `append_rows()` appends decisions to `OUTPUT_FILE` (`deprescriptions.csv`, gitignored),
-  writing the header on first use. One CSV row is written **per stopped medication**.
+- Persistence is **SQLite** in `DB_FILE` (`deprescriptions.db`, gitignored), created by
+  `init_db()` at startup with WAL mode enabled — this makes concurrent writers safe
+  (many readers + serialized writes) rather than the earlier plain-CSV append, which
+  raced across processes. `_connect()` sets a 30s busy timeout. `append_rows()` inserts
+  one row **per stopped medication** in a single transaction. `export_csv_str()` /
+  `export_csv()` render the table to CSV (`OUTPUT_COLUMNS` order); the "Exporter CSV"
+  button streams a timestamped download via `ui.download`.
 - `MedicationEntry` is a reusable component (name + multi-select justifications +
   conditional detail fields). Detail fields appear only for justifications in
   `JUSTIFICATIONS_NEEDING_DETAIL` and for the free-text "Autre" option; they are
